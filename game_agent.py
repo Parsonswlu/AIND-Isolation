@@ -35,7 +35,54 @@ def custom_score(game, player):
     """
 
     # TODO: finish this function!
-    raise NotImplementedError
+    if game.is_loser(player):
+        return float("-inf")
+
+    if game.is_winner(player):
+        return float("inf")
+
+    custom_score_choice = 3
+
+    # Option #1 - difference in own and opp moves plus overlapped moves
+    if custom_score_choice == 1:
+        own_moves = game.get_legal_moves(player)
+        opp_moves = game.get_legal_moves(game.get_opponent(player))
+        overlap = set(own_moves).intersection(opp_moves)
+        return float(len(own_moves) - len(opp_moves) + len(list(overlap)))
+
+    # Option #2 - check diamond area of immediate vicinity
+    elif custom_score_choice == 2:
+        own_moves = game.get_legal_moves(player)
+        opp_moves = game.get_legal_moves(game.get_opponent(player))
+        diamond_moves = [(2,0),(-2,0),(0,2),(0,-2),(1,1),(-1,1),(1,-1),(-1,-1)]
+        own_loc = game.get_player_location(player)
+        opp_loc = game.get_player_location(game.get_opponent(player))
+
+        for x in diamond_moves:
+            if game.move_is_legal(tuple(map(sum,zip(x,own_loc)))):
+                own_moves+=tuple(map(sum,zip(x,own_loc)))
+            if game.move_is_legal(tuple(map(sum,zip(x,opp_loc)))):
+                opp_moves+=tuple(map(sum,zip(x,opp_loc)))
+
+        return float(len(own_moves) - 2*len(opp_moves))
+
+    # Option #3 - diamond moves + give higher scores to moves that get more aggressive as the game goes on
+    elif custom_score_choice == 3:
+        own_moves = game.get_legal_moves(player)
+        opp_moves = game.get_legal_moves(game.get_opponent(player))
+        diamond_moves = [(2,0),(-2,0),(0,2),(0,-2),(1,1),(-1,1),(1,-1),(-1,-1)]
+        own_loc = game.get_player_location(player)
+        opp_loc = game.get_player_location(game.get_opponent(player))
+
+        for x in diamond_moves:
+            if game.move_is_legal(tuple(map(sum,zip(x,own_loc)))):
+                own_moves+=tuple(map(sum,zip(x,own_loc)))
+            if game.move_is_legal(tuple(map(sum,zip(x,opp_loc)))):
+                opp_moves+=tuple(map(sum,zip(x,opp_loc)))
+
+        game_progress = game.move_count / (game.width*game.height)
+
+        return float(len(own_moves) - 3*game_progress*len(opp_moves))
 
 
 class CustomPlayer:
@@ -116,7 +163,11 @@ class CustomPlayer:
         self.time_left = time_left
 
         # TODO: finish this function!
+        action = (-1,-1)
 
+        if not legal_moves:
+            return action   
+        
         # Perform any required initializations, including selecting an initial
         # move from the game board (i.e., an opening book), or returning
         # immediately if there are no legal moves
@@ -126,14 +177,22 @@ class CustomPlayer:
             # here in order to avoid timeout. The try/except block will
             # automatically catch the exception raised by the search method
             # when the timer gets close to expiring
-            pass
+            depth = 1 if self.iterative else self.search_depth
+            while True: 
+                if self.method == 'minimax':
+                    v, action = self.minimax(game,depth)
+                elif self.method == 'alphabeta':
+                    v, action = self.alphabeta(game,depth)
+                if not self.iterative:
+                    return action
+                depth+=1
 
         except Timeout:
             # Handle any actions required at timeout, if necessary
-            pass
+            return action
 
         # Return the best move from the last completed search iteration
-        raise NotImplementedError
+        return action
 
     def minimax(self, game, depth, maximizing_player=True):
         """Implement the minimax search algorithm as described in the lectures.
@@ -164,7 +223,21 @@ class CustomPlayer:
             raise Timeout()
 
         # TODO: finish this function!
-        raise NotImplementedError
+        ## The code below is based partially on pseudocode from Section 5.3 of the textbook 
+        ## AIMA: 3rd edition by Stuart J Russell and Peter Norvig
+        legal_moves = game.get_legal_moves()
+        best_score = float("-inf") if maximizing_player else float("inf")
+        best_action = (-1,-1)
+
+        if not legal_moves or depth == 0:
+            return self.score(game,self), best_action
+
+        for action in legal_moves:
+            # Recursively check values in child nodes
+            v, _ = self.minimax(game.forecast_move(action),depth-1,maximizing_player = not maximizing_player)
+            if (v > best_score and maximizing_player) or (v < best_score and not maximizing_player):
+                best_score, best_action = v, action
+        return best_score, best_action
 
     def alphabeta(self, game, depth, alpha=float("-inf"), beta=float("inf"), maximizing_player=True):
         """Implement minimax search with alpha-beta pruning as described in the
@@ -202,4 +275,33 @@ class CustomPlayer:
             raise Timeout()
 
         # TODO: finish this function!
-        raise NotImplementedError
+        ## The code below is based partially on pseudocode from Section 5.3 of the textbook 
+        ## AIMA: 3rd edition by Stuart J Russell and Peter Norvig
+        legal_moves = game.get_legal_moves()
+        best_score = float("-inf") if maximizing_player else float("inf")
+        best_action = (-1,-1)
+
+        ## Cutoff Test
+        if not legal_moves or depth == 0:
+            return self.score(game,self), best_action
+
+        for action in legal_moves:
+            # Recursively check values in child nodes
+            v, _ = self.alphabeta(game.forecast_move(action),depth-1,alpha,beta,maximizing_player = not maximizing_player)
+            if maximizing_player:
+                # Prune if possible
+                if v >= beta:
+                    return v, action
+                # Otherwise update score if better than previous
+                if v > best_score:
+                    best_score, best_action = v, action
+                alpha = max(alpha,v)
+            elif not maximizing_player:
+                # Prune if possible
+                if v <= alpha:
+                    return v, action
+                # Otherwise update score if better than previouss
+                if v < best_score:
+                    best_score, best_action = v, action
+                beta = min(beta,v)                
+        return best_score, best_action
